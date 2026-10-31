@@ -1,8 +1,8 @@
 import Todo from "../models/todo.js";
-// get function consist of "Getting All" and "Getting by id"
+
 const getTodos = async (req, res) => {
   try {
-    const filter = {};
+    const filter = { user: req.userId };   // CHANGED: start with the owner filter
 
     if (req.query.title) {
       const escaped = req.query.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -18,33 +18,34 @@ const getTodos = async (req, res) => {
 
 const getTodoById = async (req, res) => {
   try {
-    const todo = await Todo.findById(req.params.id);
+    // CHANGED: findById -> findOne with both id and owner
+    const todo = await Todo.findOne({ _id: req.params.id, user: req.userId });
     if (!todo) {
-      return res.status(404).jason({ error: "Todo not found" });
+      return res.status(404).json({ error: "Todo not found" });
     }
     res.json(todo);
   } catch (err) {
-    res.status(400).json({ error: "err.message" });
+    res.status(400).json({ error: err.message });
   }
 };
 
-// post = create
 const postTodo = async (req, res) => {
   try {
     if (Array.isArray(req.body)) {
-      const items = req.body.map((item) => ({ title: item.title }));
+      // CHANGED: each item gets the owner
+      const items = req.body.map((item) => ({ title: item.title, user: req.userId }));
       const todos = await Todo.insertMany(items);
       return res.status(201).json(todos);
     }
 
-    const todo = await Todo.create({ title: req.body.title });
+    // CHANGED: owner added
+    const todo = await Todo.create({ title: req.body.title, user: req.userId });
     res.status(201).json(todo);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 };
 
-// put = replace
 const putTodo = async (req, res) => {
   try {
     const title = req.body.title;
@@ -55,9 +56,10 @@ const putTodo = async (req, res) => {
         .status(400)
         .json({ error: "PUT requires both title and completed" });
     }
-    // findByIdAndUpdate takes 3 args (id, newData, options)
-    const todo = await Todo.findByIdAndUpdate(
-      req.params.id,
+
+    // CHANGED: findByIdAndUpdate -> findOneAndUpdate with id + owner
+    const todo = await Todo.findOneAndUpdate(
+      { _id: req.params.id, user: req.userId },
       { title, completed },
       { new: true, runValidators: true },
     );
@@ -70,14 +72,17 @@ const putTodo = async (req, res) => {
   }
 };
 
-// patch = update
-// patch is always by id
-
 const patchTodo = async (req, res) => {
   try {
-    const todo = await Todo.findByIdAndUpdate(
-      req.params.id,
-      { $set: req.body }, // $set means to change only what is sent
+    // CHANGED: only allow title and completed to be changed
+    const { title, completed } = req.body;
+    const updates = {};
+    if (title !== undefined) updates.title = title;
+    if (completed !== undefined) updates.completed = completed;
+
+    const todo = await Todo.findOneAndUpdate(
+      { _id: req.params.id, user: req.userId },
+      { $set: updates },
       { new: true, runValidators: true },
     );
 
@@ -91,10 +96,10 @@ const patchTodo = async (req, res) => {
   }
 };
 
-// delete
 const deleteTodo = async (req, res) => {
   try {
-    const todo = await Todo.findByIdAndDelete(req.params.id);
+    // CHANGED: findByIdAndDelete -> findOneAndDelete with id + owner
+    const todo = await Todo.findOneAndDelete({ _id: req.params.id, user: req.userId });
     if (!todo) {
       return res.status(404).json({ error: "Todo not found" });
     }
